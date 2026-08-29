@@ -191,8 +191,9 @@ app.get("/api", async (req, res) => {
     const scaledHeight = Math.max(1, Math.round(textLayer.height * scaleY));
 
     const rotatedText = await sharp(textLayer.buffer)
-      .resize(scaledWidth, scaledHeight)
+      .resize(scaledWidth, scaledHeight, { kernel: "lanczos3" })
       .rotate(BANNER.angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .sharpen()
       .png()
       .toBuffer();
 

@@ -4,6 +4,11 @@ const express = require("express");
 const sharp = require("sharp");
 const path = require("path");
 
+const {
+  createCanvas,
+  GlobalFonts
+} = require("@napi-rs/canvas");
+
 const app = express();
 
 const PORT = process.env.PORT || 3000;
@@ -15,260 +20,343 @@ const TEMPLATE_PATH = path.join(
 );
 
 
-// ======================================================
-// ORIGINAL DESIGN COORDINATES
-// ======================================================
-
-// তোমার original landscape design-এর coordinate system
+// =====================================================
+// DESIGN SIZE
+// =====================================================
 
 const DESIGN_WIDTH = 1536;
 const DESIGN_HEIGHT = 1024;
 
 
-// ======================================================
-// TEXT AREA
-// ======================================================
+// =====================================================
+// FONT
+// =====================================================
 
-const TEXT_X = 700;
-const TEXT_Y = 500;
+/*
+  চাইলে assets/font.ttf রাখবে।
 
-const MAX_TEXT_WIDTH = 580;
+  Original-এর মতো exact font চাইলে
+  এখানে সেই font file দিতে হবে।
+*/
 
+const FONT_PATH = path.join(
+  __dirname,
+  "assets",
+  "font.ttf"
+);
 
-// ======================================================
-// XML ESCAPE
-// ======================================================
+try {
 
-function escapeXML(text = "") {
-  return String(text)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+  GlobalFonts.registerFromPath(
+    FONT_PATH,
+    "EffectFont"
+  );
+
+  console.log("Custom font loaded");
+
+} catch (error) {
+
+  console.log(
+    "Custom font not found, using fallback font"
+  );
+
 }
 
 
-// ======================================================
-// FONT SIZE CALCULATOR
-// ======================================================
+// =====================================================
+// BANNER TEXT SETTINGS
+// =====================================================
 
-function getFontSize(text, customFontSize) {
+const TEXT_CENTER_X = 1030;
+const TEXT_CENTER_Y = 545;
 
-  const length = [...text].length;
+const TEXT_ANGLE = 19;
 
-  // Text যত বড় হবে font তত ছোট হবে
 
-  let fontSize;
+/*
+  Banner-এর মধ্যে text-এর জন্য
+  safe maximum width
+*/
 
-  if (length <= 5) {
-    fontSize = 150;
-  } else if (length <= 8) {
-    fontSize = 125;
-  } else if (length <= 12) {
-    fontSize = 95;
-  } else if (length <= 16) {
-    fontSize = 75;
-  } else if (length <= 22) {
-    fontSize = 60;
-  } else if (length <= 30) {
-    fontSize = 48;
-  } else if (length <= 40) {
-    fontSize = 38;
-  } else {
-    fontSize = 30;
+const MAX_TEXT_WIDTH = 610;
+
+
+/*
+  ছোট margin
+*/
+
+const SIDE_PADDING = 40;
+
+
+// =====================================================
+// COLOR VALIDATION
+// =====================================================
+
+function getSafeColor(color) {
+
+  const defaultColor = "#31B6B5";
+
+  if (!color) {
+    return defaultColor;
   }
 
+  const value = String(color).trim();
 
-  // User custom font size
+  if (
+    /^#[0-9a-fA-F]{6}$/.test(value)
+  ) {
+    return value;
+  }
 
-  if (customFontSize) {
+  return defaultColor;
+}
 
-    const requested = Number(customFontSize);
+
+// =====================================================
+// GET PERFECT FONT SIZE
+// =====================================================
+
+function getBestFontSize(
+  text,
+  requestedFontSize
+) {
+
+  const canvas =
+    createCanvas(10, 10);
+
+  const ctx =
+    canvas.getContext("2d");
+
+
+  const fontFamily =
+    "EffectFont, Arial Black, Arial";
+
+
+  /*
+    User custom font size দিলে
+    সেটাকে maximum হিসেবে ব্যবহার করবে।
+
+    কিন্তু text কাটার chance থাকলে
+    automatically ছোট হবে।
+  */
+
+  let maxSize = 150;
+
+  if (requestedFontSize) {
+
+    const requested =
+      Number(requestedFontSize);
 
     if (
       Number.isFinite(requested) &&
-      requested >= 15 &&
-      requested <= 200
+      requested >= 20 &&
+      requested <= 250
     ) {
-      fontSize = requested;
+
+      maxSize = requested;
+
     }
 
   }
 
-  return fontSize;
-}
 
-
-// ======================================================
-// CREATE SVG
-// ======================================================
-
-function createTextSVG(
-  text,
-  actualWidth,
-  actualHeight,
-  options = {}
-) {
-
-  const safeText = escapeXML(text);
-
-  const fontSize = getFontSize(
-    text,
-    options.fontSize
-  );
-
-  const color =
-    options.color || "#24B8B9";
+  const availableWidth =
+    MAX_TEXT_WIDTH - SIDE_PADDING;
 
 
   /*
-    IMPORTANT:
-
-    SVG-এর width এবং height
-    template image-এর actual size হবে।
-
-    কিন্তু viewBox থাকবে original
-    design coordinate অনুযায়ী।
+    বড় থেকে ছোট font test করা
   */
 
-  return `
-<svg
-  xmlns="http://www.w3.org/2000/svg"
-  width="${actualWidth}"
-  height="${actualHeight}"
-  viewBox="0 0 ${DESIGN_WIDTH} ${DESIGN_HEIGHT}"
-  preserveAspectRatio="none"
->
+  for (
+    let size = maxSize;
+    size >= 20;
+    size--
+  ) {
 
-  <defs>
-
-    <linearGradient
-      id="textGradient"
-      x1="0"
-      y1="0"
-      x2="0"
-      y2="1"
-    >
-      <stop
-        offset="0%"
-        stop-color="${color}"
-      />
-
-      <stop
-        offset="100%"
-        stop-color="#08787A"
-      />
-
-    </linearGradient>
+    ctx.font =
+      `900 ${size}px ${fontFamily}`;
 
 
-    <filter
-      id="shadow"
-      x="-50%"
-      y="-50%"
-      width="200%"
-      height="200%"
-    >
-
-      <feDropShadow
-        dx="5"
-        dy="9"
-        stdDeviation="3"
-        flood-color="#000000"
-        flood-opacity="0.85"
-      />
-
-    </filter>
+    const metrics =
+      ctx.measureText(text);
 
 
-    <!-- Banner area -->
-
-    <clipPath id="bannerClip">
-
-      <polygon
-        points="
-          645,305
-          1415,565
-          1370,800
-          615,590
-        "
-      />
-
-    </clipPath>
-
-  </defs>
+    const width =
+      metrics.width;
 
 
-  <!-- ============================================ -->
-  <!-- OLD TEXT COVER -->
-  <!-- ============================================ -->
+    if (
+      width <= availableWidth
+    ) {
 
-  <polygon
-    points="
-      645,305
-      1415,565
-      1370,800
-      615,590
-    "
-    fill="#0B0D0F"
-  />
+      return size;
+
+    }
+
+  }
 
 
-  <!-- ============================================ -->
-  <!-- CUSTOM TEXT -->
-  <!-- ============================================ -->
-
-  <g clip-path="url(#bannerClip)">
-
-    <text
-
-      x="${TEXT_X}"
-      y="${TEXT_Y}"
-
-      font-family="
-        Arial Black,
-        Arial,
-        DejaVu Sans,
-        sans-serif
-      "
-
-      font-size="${fontSize}"
-
-      font-weight="900"
-
-      letter-spacing="0"
-
-      fill="url(#textGradient)"
-
-      stroke="#063F40"
-
-      stroke-width="1.5"
-
-      paint-order="stroke fill"
-
-      filter="url(#shadow)"
-
-      transform="
-        rotate(
-          19
-          ${TEXT_X}
-          ${TEXT_Y}
-        )
-      "
-
-    >${safeText}</text>
-
-  </g>
-
-</svg>
-`;
+  return 20;
 }
 
 
-// ======================================================
-// HOME
-// ======================================================
+// =====================================================
+// CREATE TEXT PNG
+// =====================================================
+
+function createTextImage(
+  text,
+  options = {}
+) {
+
+  const fontSize =
+    getBestFontSize(
+      text,
+      options.fontSize
+    );
+
+
+  const color =
+    getSafeColor(
+      options.color
+    );
+
+
+  const canvasWidth =
+    MAX_TEXT_WIDTH + 100;
+
+
+  const canvasHeight =
+    300;
+
+
+  const canvas =
+    createCanvas(
+      canvasWidth,
+      canvasHeight
+    );
+
+
+  const ctx =
+    canvas.getContext("2d");
+
+
+  const fontFamily =
+    "EffectFont, Arial Black, Arial";
+
+
+  ctx.font =
+    `900 ${fontSize}px ${fontFamily}`;
+
+
+  ctx.textAlign = "center";
+
+  ctx.textBaseline = "middle";
+
+
+  // =================================================
+  // SHADOW
+  // =================================================
+
+  ctx.shadowColor =
+    "rgba(0, 0, 0, 0.90)";
+
+  ctx.shadowBlur = 5;
+
+  ctx.shadowOffsetX = 7;
+
+  ctx.shadowOffsetY = 10;
+
+
+  // =================================================
+  // ORIGINAL-LIKE GRADIENT
+  // =================================================
+
+  const gradient =
+    ctx.createLinearGradient(
+      0,
+      50,
+      0,
+      230
+    );
+
+
+  gradient.addColorStop(
+    0,
+    color
+  );
+
+  gradient.addColorStop(
+    0.55,
+    "#2AAEAD"
+  );
+
+  gradient.addColorStop(
+    1,
+    "#087C7E"
+  );
+
+
+  ctx.fillStyle =
+    gradient;
+
+
+  // =================================================
+  // TEXT STROKE
+  // =================================================
+
+  ctx.strokeStyle =
+    "#07595B";
+
+  ctx.lineWidth =
+    Math.max(
+      1.5,
+      fontSize * 0.018
+    );
+
+
+  const x =
+    canvasWidth / 2;
+
+
+  const y =
+    canvasHeight / 2;
+
+
+  ctx.strokeText(
+    text,
+    x,
+    y
+  );
+
+
+  ctx.fillText(
+    text,
+    x,
+    y
+  );
+
+
+  return {
+    buffer:
+      canvas.toBuffer("image/png"),
+
+    width:
+      canvasWidth,
+
+    height:
+      canvasHeight,
+
+    fontSize
+  };
+
+}
+
+
+// =====================================================
+// API HOME
+// =====================================================
 
 app.get("/", async (req, res) => {
 
@@ -283,12 +371,17 @@ app.get("/", async (req, res) => {
 
       status: true,
 
-      message:
+      name:
         "Custom Text Effect API",
 
       template: {
-        width: metadata.width,
-        height: metadata.height
+
+        width:
+          metadata.width,
+
+        height:
+          metadata.height
+
       },
 
       examples: {
@@ -299,14 +392,11 @@ app.get("/", async (req, res) => {
         fullText:
           "/api?effectName=MAHABUB%20BOT",
 
-        customFont:
-          "/api?effectName=MAHABUB%20BOT&fontSize=60",
+        customSize:
+          "/api?effectName=MAHABUB%20BOT&fontSize=70",
 
         customColor:
-          "/api?effectName=MAHABUB&color=%23ff0000",
-
-        png:
-          "/api?effectName=MAHABUB&format=png"
+          "/api?effectName=MAHABUB&color=%23ff0000"
 
       }
 
@@ -315,8 +405,12 @@ app.get("/", async (req, res) => {
   } catch (error) {
 
     res.status(500).json({
+
       status: false,
-      error: error.message
+
+      error:
+        error.message
+
     });
 
   }
@@ -324,9 +418,9 @@ app.get("/", async (req, res) => {
 });
 
 
-// ======================================================
-// API
-// ======================================================
+// =====================================================
+// MAIN API
+// =====================================================
 
 app.get("/api", async (req, res) => {
 
@@ -343,9 +437,9 @@ app.get("/api", async (req, res) => {
     } = req.query;
 
 
-    // ==================================================
-    // USER TEXT
-    // ==================================================
+    // ===============================================
+    // GET TEXT
+    // ===============================================
 
     const userText =
       String(
@@ -369,62 +463,64 @@ app.get("/api", async (req, res) => {
     }
 
 
-    // ==================================================
-    // TEXT LIMIT
-    // ==================================================
-
-    if ([...userText].length > 50) {
+    if (
+      [...userText].length > 60
+    ) {
 
       return res.status(400).json({
 
         status: false,
 
         error:
-          "Maximum 50 characters allowed"
+          "Maximum 60 characters allowed"
 
       });
 
     }
 
 
-    // ==================================================
-    // GET ACTUAL IMAGE SIZE
-    // ==================================================
+    // ===============================================
+    // GET TEMPLATE METADATA
+    // ===============================================
 
     const metadata =
       await sharp(TEMPLATE_PATH)
         .metadata();
 
 
-    const actualWidth =
-      metadata.width;
-
-
-    const actualHeight =
-      metadata.height;
-
-
     if (
-      !actualWidth ||
-      !actualHeight
+      !metadata.width ||
+      !metadata.height
     ) {
 
       throw new Error(
-        "Could not detect template image size"
+        "Template image size not found"
       );
 
     }
 
 
-    // ==================================================
-    // CREATE SVG SAME SIZE AS IMAGE
-    // ==================================================
+    // ===============================================
+    // SCALE FOR DIFFERENT TEMPLATE SIZE
+    // ===============================================
 
-    const svg =
-      createTextSVG(
+    const scaleX =
+      metadata.width /
+      DESIGN_WIDTH;
+
+
+    const scaleY =
+      metadata.height /
+      DESIGN_HEIGHT;
+
+
+    // ===============================================
+    // CREATE TEXT IMAGE
+    // ===============================================
+
+    const textData =
+      createTextImage(
         userText,
-        actualWidth,
-        actualHeight,
         {
           fontSize,
           color
@@ -432,76 +528,176 @@ app.get("/api", async (req, res) => {
       );
 
 
-    // ==================================================
-    // CREATE BASE IMAGE
-    // ==================================================
+    // ===============================================
+    // SCALE TEXT
+    // ===============================================
+
+    const scaledTextWidth =
+      Math.round(
+        textData.width *
+        scaleX
+      );
+
+
+    const scaledTextHeight =
+      Math.round(
+        textData.height *
+        scaleY
+      );
+
+
+    // ===============================================
+    // ROTATE TEXT
+    // ===============================================
+
+    const rotatedText =
+      await sharp(
+        textData.buffer
+      )
+
+        .resize(
+          scaledTextWidth,
+          scaledTextHeight
+        )
+
+        .rotate(
+          TEXT_ANGLE,
+          {
+            background: {
+              r: 0,
+              g: 0,
+              b: 0,
+              alpha: 0
+            }
+          }
+        )
+
+        .png()
+
+        .toBuffer();
+
+
+    // ===============================================
+    // GET ROTATED TEXT SIZE
+    // ===============================================
+
+    const rotatedMetadata =
+      await sharp(
+        rotatedText
+      ).metadata();
+
+
+    // ===============================================
+    // CENTER TEXT ON BANNER
+    // ===============================================
+
+    let left =
+      Math.round(
+        TEXT_CENTER_X *
+        scaleX -
+        rotatedMetadata.width / 2
+      );
+
+
+    let top =
+      Math.round(
+        TEXT_CENTER_Y *
+        scaleY -
+        rotatedMetadata.height / 2
+      );
+
+
+    /*
+      Clamp position
+
+      যাতে কোনো অবস্থাতেই
+      image-এর বাইরে না যায়
+    */
+
+    left = Math.max(
+      0,
+      Math.min(
+        left,
+        metadata.width -
+        rotatedMetadata.width
+      )
+    );
+
+
+    top = Math.max(
+      0,
+      Math.min(
+        top,
+        metadata.height -
+        rotatedMetadata.height
+      )
+    );
+
+
+    // ===============================================
+    // CREATE FINAL IMAGE
+    // ===============================================
 
     let image =
-      sharp(TEMPLATE_PATH);
+      sharp(TEMPLATE_PATH)
+
+        .composite([
+
+          {
+            input:
+              rotatedText,
+
+            left,
+
+            top
+          }
+
+        ]);
 
 
-    // ==================================================
-    // COMPOSITE TEXT
-    // ==================================================
-
-    image =
-      image.composite([
-        {
-          input: Buffer.from(svg),
-          top: 0,
-          left: 0
-        }
-      ]);
-
-
-    // ==================================================
+    // ===============================================
     // OPTIONAL RESIZE
-    // ==================================================
+    // ===============================================
 
     const outputWidth =
-      parseInt(w);
+      Number(w);
 
 
     const outputHeight =
-      parseInt(h);
+      Number(h);
 
 
     if (
       Number.isFinite(outputWidth) &&
-      outputWidth >= 300 &&
-      outputWidth <= 4000
+      outputWidth > 0
     ) {
 
-      if (
-        Number.isFinite(outputHeight) &&
-        outputHeight >= 300 &&
-        outputHeight <= 4000
-      ) {
-
-        image =
-          image.resize(
+      image =
+        image.resize(
+          Math.min(
             outputWidth,
-            outputHeight,
-            {
-              fit: "fill"
-            }
-          );
+            4000
+          ),
 
-      } else {
+          Number.isFinite(outputHeight) &&
+          outputHeight > 0
+            ? Math.min(
+                outputHeight,
+                4000
+              )
+            : undefined,
 
-        image =
-          image.resize({
-            width: outputWidth
-          });
-
-      }
+          {
+            fit: "cover"
+          }
+        );
 
     }
 
 
-    // ==================================================
+    // ===============================================
     // OUTPUT FORMAT
-    // ==================================================
+    // ===============================================
 
     const outputFormat =
       String(
@@ -517,7 +713,9 @@ app.get("/api", async (req, res) => {
 
     // PNG
 
-    if (outputFormat === "png") {
+    if (
+      outputFormat === "png"
+    ) {
 
       const buffer =
         await image
@@ -525,10 +723,7 @@ app.get("/api", async (req, res) => {
           .toBuffer();
 
 
-      res.set(
-        "Content-Type",
-        "image/png"
-      );
+      res.type("png");
 
       return res.send(buffer);
 
@@ -537,7 +732,9 @@ app.get("/api", async (req, res) => {
 
     // WEBP
 
-    if (outputFormat === "webp") {
+    if (
+      outputFormat === "webp"
+    ) {
 
       const buffer =
         await image
@@ -547,17 +744,14 @@ app.get("/api", async (req, res) => {
           .toBuffer();
 
 
-      res.set(
-        "Content-Type",
-        "image/webp"
-      );
+      res.type("webp");
 
       return res.send(buffer);
 
     }
 
 
-    // JPG DEFAULT
+    // JPG
 
     const buffer =
       await image
@@ -567,11 +761,7 @@ app.get("/api", async (req, res) => {
         .toBuffer();
 
 
-    res.set(
-      "Content-Type",
-      "image/jpeg"
-    );
-
+    res.type("jpeg");
 
     return res.send(buffer);
 
@@ -601,9 +791,9 @@ app.get("/api", async (req, res) => {
 });
 
 
-// ======================================================
+// =====================================================
 // START SERVER
-// ======================================================
+// =====================================================
 
 app.listen(PORT, () => {
 

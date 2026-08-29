@@ -20,7 +20,8 @@ const FONT_PATH = path.join(
   __dirname,
   "..",
   "assets",
-  "font.ttf"
+  "font",
+  "shadow.ttf"
 );
 
 const DESIGN_WIDTH = 1536;

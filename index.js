@@ -14,14 +14,18 @@ const TEMPLATE_PATH = path.join(
   "template.jpg"
 );
 
-// Original image size
+
+// =====================================
+// ORIGINAL TEMPLATE SIZE
+// =====================================
+
 const BASE_WIDTH = 1536;
 const BASE_HEIGHT = 1024;
 
 
-// ======================================
-// Helper: SVG safe text
-// ======================================
+// =====================================
+// XML ESCAPE
+// =====================================
 
 function escapeXML(text = "") {
   return String(text)
@@ -33,22 +37,80 @@ function escapeXML(text = "") {
 }
 
 
-// ======================================
-// Create SVG overlay
-// ======================================
+// =====================================
+// CREATE TEXT EFFECT
+// =====================================
 
-function createTextSVG(text) {
+function createTextSVG(
+  text,
+  options = {}
+) {
   const safeText = escapeXML(text);
 
-  // Text length অনুযায়ী font size
-  const length = [...text].length;
+  const textLength = [...text].length;
 
-  let fontSize = 145;
+  // =====================================
+  // AUTO FONT SIZE
+  // =====================================
 
-  if (length > 8) fontSize = 125;
-  if (length > 12) fontSize = 105;
-  if (length > 18) fontSize = 80;
-  if (length > 25) fontSize = 62;
+  let fontSize = 150;
+
+  if (textLength >= 8) {
+    fontSize = 135;
+  }
+
+  if (textLength >= 12) {
+    fontSize = 115;
+  }
+
+  if (textLength >= 18) {
+    fontSize = 95;
+  }
+
+  if (textLength >= 25) {
+    fontSize = 75;
+  }
+
+  if (textLength >= 32) {
+    fontSize = 60;
+  }
+
+
+  // User custom font size
+  if (
+    options.fontSize &&
+    Number(options.fontSize) > 20
+  ) {
+    fontSize = Number(options.fontSize);
+  }
+
+
+  // =====================================
+  // TEXT AREA
+  // =====================================
+
+  /*
+    Banner-এর text বসানোর জায়গা
+
+    x শুরু = 680
+    x শেষ = 1370
+
+    Safe text width = 590
+  */
+
+  const TEXT_CENTER_X = 1025;
+  const TEXT_CENTER_Y = 540;
+
+  const MAX_TEXT_WIDTH = 620;
+
+
+  // =====================================
+  // TEXT COLOR
+  // =====================================
+
+  const color =
+    options.color || "#24b7b8";
+
 
   return `
   <svg
@@ -68,39 +130,56 @@ function createTextSVG(text) {
         x2="100%"
         y2="100%"
       >
-        <stop offset="0%" stop-color="#1fa7a8"/>
-        <stop offset="45%" stop-color="#37c9c2"/>
-        <stop offset="100%" stop-color="#118c8f"/>
+
+        <stop
+          offset="0%"
+          stop-color="${color}"
+        />
+
+        <stop
+          offset="55%"
+          stop-color="${color}"
+        />
+
+        <stop
+          offset="100%"
+          stop-color="#087f80"
+        />
+
       </linearGradient>
 
 
-      <!-- Shadow -->
+      <!-- Text shadow -->
+
       <filter
-        id="shadow"
+        id="textShadow"
         x="-30%"
         y="-30%"
         width="160%"
         height="160%"
       >
+
         <feDropShadow
-          dx="8"
-          dy="12"
+          dx="6"
+          dy="10"
           stdDeviation="4"
           flood-color="#000000"
-          flood-opacity="0.85"
+          flood-opacity="0.9"
         />
+
       </filter>
 
 
-      <!-- Banner clipping -->
+      <!-- Banner clip area -->
+
       <clipPath id="bannerClip">
 
         <polygon
           points="
-            690,312
-            1405,573
-            1360,780
-            635,590
+            650,310
+            1410,565
+            1370,800
+            620,590
           "
         />
 
@@ -109,36 +188,41 @@ function createTextSVG(text) {
     </defs>
 
 
-    <!--
-      পুরানো YOUR TEXT অংশ cover করা
-      Banner-এর উপর dark overlay
-    -->
+    <!-- ================================= -->
+    <!-- COVER ORIGINAL YOUR TEXT -->
+    <!-- ================================= -->
 
     <polygon
       points="
-        680,315
-        1405,575
-        1362,780
-        635,590
+        650,310
+        1410,565
+        1370,800
+        620,590
       "
-      fill="#111416"
-      fill-opacity="0.82"
+      fill="#0b0d0e"
     />
 
 
-    <!-- Text -->
+    <!-- ================================= -->
+    <!-- CUSTOM TEXT -->
+    <!-- ================================= -->
+
     <g
       clip-path="url(#bannerClip)"
-      filter="url(#shadow)"
     >
 
       <text
 
-        x="705"
-        y="510"
+        x="${TEXT_CENTER_X}"
+        y="${TEXT_CENTER_Y}"
+
+        text-anchor="middle"
+
+        dominant-baseline="middle"
 
         font-family="
           Arial Black,
+          Arial,
           DejaVu Sans,
           sans-serif
         "
@@ -147,19 +231,29 @@ function createTextSVG(text) {
 
         font-weight="900"
 
-        letter-spacing="2"
+        letter-spacing="1"
 
         fill="url(#textGradient)"
 
-        stroke="#0b5f61"
+        stroke="#073e40"
+
         stroke-width="2"
 
         paint-order="stroke fill"
 
+        filter="url(#textShadow)"
+
         transform="
-          rotate(20 705 510)
-          skewY(-1)
+          rotate(
+            19
+            ${TEXT_CENTER_X}
+            ${TEXT_CENTER_Y}
+          )
         "
+
+        textLength="${MAX_TEXT_WIDTH}"
+
+        lengthAdjust="spacingAndGlyphs"
 
       >
         ${safeText}
@@ -172,113 +266,161 @@ function createTextSVG(text) {
 }
 
 
-// ======================================
-// API
-// ======================================
+// =====================================
+// HOME
+// =====================================
 
 app.get("/", (req, res) => {
 
   res.json({
     status: true,
-    message: "Your Text Effect API",
-    usage: "/api?effectName=YOUR_TEXT",
-    example: "/api?effectName=MAHABUB"
+
+    message: "Custom Text Effect API",
+
+    usage: {
+      basic:
+        "/api?effectName=MAHABUB",
+
+      fullText:
+        "/api?effectName=MAHABUB%20BOT",
+
+      customColor:
+        "/api?effectName=MAHABUB&color=%23ff0000",
+
+      customFont:
+        "/api?effectName=MAHABUB&fontSize=130",
+
+      customSize:
+        "/api?effectName=MAHABUB&w=1920&h=1080"
+    }
   });
 
 });
 
 
+// =====================================
+// API
+// =====================================
+
 app.get("/api", async (req, res) => {
 
   try {
 
-    let {
+    const {
       effectName,
       text,
+      color,
+      fontSize,
       w,
       h,
       format
     } = req.query;
 
 
-    // effectName or text
+    // =====================================
+    // GET TEXT
+    // =====================================
+
     const userText = String(
-      effectName || text || ""
+      effectName ||
+      text ||
+      ""
     ).trim();
 
 
-    // Validation
     if (!userText) {
 
       return res.status(400).json({
         status: false,
-        error: "effectName is required",
-        example: "/api?effectName=MAHABUB"
+
+        error:
+          "effectName is required",
+
+        example:
+          "/api?effectName=MAHABUB%20BOT"
       });
 
     }
 
 
-    // Max text length
-    if ([...userText].length > 35) {
+    // =====================================
+    // TEXT LIMIT
+    // =====================================
+
+    if ([...userText].length > 40) {
 
       return res.status(400).json({
         status: false,
-        error: "Maximum 35 characters allowed"
+
+        error:
+          "Maximum 40 characters allowed"
       });
 
     }
 
 
-    // Output width
-    let outputWidth = parseInt(w) || BASE_WIDTH;
+    // =====================================
+    // OUTPUT SIZE
+    // =====================================
 
-    // Security limit
-    if (outputWidth < 300) outputWidth = 300;
-    if (outputWidth > 3000) outputWidth = 3000;
-
-
-    // যদি h দেওয়া হয়
-    let outputHeight = h
-      ? parseInt(h)
-      : null;
+    let outputWidth =
+      parseInt(w) || BASE_WIDTH;
 
 
-    if (
-      outputHeight &&
-      (
-        outputHeight < 300 ||
-        outputHeight > 3000
-      )
-    ) {
-      outputHeight = null;
+    let outputHeight =
+      parseInt(h) || null;
+
+
+    // Limit width
+
+    if (outputWidth < 300) {
+      outputWidth = 300;
+    }
+
+    if (outputWidth > 3000) {
+      outputWidth = 3000;
     }
 
 
-    // Create SVG
-    const svg = createTextSVG(userText);
+    // =====================================
+    // CREATE SVG
+    // =====================================
+
+    const svg = createTextSVG(
+      userText,
+      {
+        color,
+        fontSize
+      }
+    );
 
 
-    // Base image + text
-    let image = sharp(TEMPLATE_PATH)
-      .composite([
-        {
-          input: Buffer.from(svg),
-          top: 0,
-          left: 0
-        }
-      ]);
+    // =====================================
+    // GENERATE IMAGE
+    // =====================================
+
+    let image = sharp(
+      TEMPLATE_PATH
+    ).composite([
+      {
+        input: Buffer.from(svg),
+        top: 0,
+        left: 0
+      }
+    ]);
 
 
-    // Resize
+    // =====================================
+    // RESIZE
+    // =====================================
+
     if (outputHeight) {
 
       image = image.resize(
         outputWidth,
         outputHeight,
         {
-          fit: "cover",
-          position: "center"
+          fit: "fill"
         }
       );
 
@@ -291,13 +433,16 @@ app.get("/api", async (req, res) => {
     }
 
 
-    // Format
-    format = String(
-      format || "jpg"
-    ).toLowerCase();
+    // =====================================
+    // FORMAT
+    // =====================================
+
+    const imageFormat =
+      String(
+        format || "jpg"
+      ).toLowerCase();
 
 
-    // Response headers
     res.setHeader(
       "Cache-Control",
       "public, max-age=3600"
@@ -305,14 +450,13 @@ app.get("/api", async (req, res) => {
 
 
     // PNG
-    if (format === "png") {
+
+    if (imageFormat === "png") {
 
       res.type("png");
 
       const buffer = await image
-        .png({
-          compressionLevel: 9
-        })
+        .png()
         .toBuffer();
 
       return res.send(buffer);
@@ -321,13 +465,14 @@ app.get("/api", async (req, res) => {
 
 
     // WEBP
-    if (format === "webp") {
+
+    if (imageFormat === "webp") {
 
       res.type("webp");
 
       const buffer = await image
         .webp({
-          quality: 90
+          quality: 95
         })
         .toBuffer();
 
@@ -336,12 +481,13 @@ app.get("/api", async (req, res) => {
     }
 
 
-    // Default JPG
+    // JPG
+
     res.type("jpeg");
 
     const buffer = await image
       .jpeg({
-        quality: 92,
+        quality: 95,
         mozjpeg: true
       })
       .toBuffer();
@@ -352,14 +498,18 @@ app.get("/api", async (req, res) => {
 
   } catch (error) {
 
-    console.error(
-      "API ERROR:",
-      error
-    );
+    console.error(error);
 
     return res.status(500).json({
+
       status: false,
-      error: "Failed to generate image"
+
+      error:
+        "Failed to generate image",
+
+      message:
+        error.message
+
     });
 
   }
@@ -367,14 +517,14 @@ app.get("/api", async (req, res) => {
 });
 
 
-// ======================================
-// Start server
-// ======================================
+// =====================================
+// START SERVER
+// =====================================
 
 app.listen(PORT, () => {
 
   console.log(
-    `API running on port ${PORT}`
+    `Server running on port ${PORT}`
   );
 
 });

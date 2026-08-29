@@ -3,6 +3,7 @@
 const express = require("express");
 const sharp = require("sharp");
 const path = require("path");
+const fs = require("fs");
 
 const {
   createCanvas,
@@ -13,31 +14,16 @@ const app = express();
 
 const PORT = process.env.PORT || 3000;
 
+
+// =====================================================
+// PATHS
+// =====================================================
+
 const TEMPLATE_PATH = path.join(
   __dirname,
   "assets",
   "template.jpg"
 );
-
-
-// =====================================================
-// DESIGN SIZE
-// =====================================================
-
-const DESIGN_WIDTH = 1536;
-const DESIGN_HEIGHT = 1024;
-
-
-// =====================================================
-// FONT
-// =====================================================
-
-/*
-  চাইলে assets/font.ttf রাখবে।
-
-  Original-এর মতো exact font চাইলে
-  এখানে সেই font file দিতে হবে।
-*/
 
 const FONT_PATH = path.join(
   __dirname,
@@ -45,75 +31,117 @@ const FONT_PATH = path.join(
   "font.ttf"
 );
 
-try {
 
-  GlobalFonts.registerFromPath(
+// =====================================================
+// ORIGINAL DESIGN SIZE
+// =====================================================
+
+/*
+  তোমার original image-এর coordinate system
+*/
+
+const DESIGN_WIDTH = 1536;
+const DESIGN_HEIGHT = 1024;
+
+
+// =====================================================
+// LOAD CUSTOM FONT
+// =====================================================
+
+let FONT_FAMILY = "Impact";
+
+if (fs.existsSync(FONT_PATH)) {
+
+  const loaded = GlobalFonts.registerFromPath(
     FONT_PATH,
-    "EffectFont"
+    "OriginalEffectFont"
   );
 
-  console.log("Custom font loaded");
+  if (loaded) {
+    FONT_FAMILY = "OriginalEffectFont";
+    console.log("Custom font loaded successfully");
+  }
 
-} catch (error) {
+} else {
 
   console.log(
-    "Custom font not found, using fallback font"
+    "font.ttf not found. Using Impact fallback."
   );
 
 }
 
 
 // =====================================================
-// BANNER TEXT SETTINGS
+// BANNER SETTINGS
 // =====================================================
 
-const TEXT_CENTER_X = 1030;
-const TEXT_CENTER_Y = 545;
-
-const TEXT_ANGLE = 19;
-
-
 /*
-  Banner-এর মধ্যে text-এর জন্য
-  safe maximum width
+  IMPORTANT:
+
+  এই values original 1536x1024 image-এর
+  banner অনুযায়ী রাখা হয়েছে।
 */
 
-const MAX_TEXT_WIDTH = 610;
+
+const BANNER = {
+
+  /*
+    Text-এর center
+  */
+
+  centerX: 1030,
+  centerY: 530,
 
 
-/*
-  ছোট margin
-*/
+  /*
+    Text-এর সর্বোচ্চ safe width
 
-const SIDE_PADDING = 40;
+    এখানে বেশি দিলে text banner-এর বাইরে যেতে পারে।
+  */
+
+  maxWidth: 590,
+
+
+  /*
+    Banner-এর safe text height
+  */
+
+  maxHeight: 150,
+
+
+  /*
+    Banner-এর angle
+  */
+
+  angle: 19
+};
 
 
 // =====================================================
-// COLOR VALIDATION
+// VALIDATE COLOR
 // =====================================================
 
 function getSafeColor(color) {
 
-  const defaultColor = "#31B6B5";
-
   if (!color) {
-    return defaultColor;
+    return "#36B9B6";
   }
 
-  const value = String(color).trim();
+  const value =
+    String(color).trim();
 
   if (
-    /^#[0-9a-fA-F]{6}$/.test(value)
+    /^#[0-9A-Fa-f]{6}$/.test(value)
   ) {
     return value;
   }
 
-  return defaultColor;
+  return "#36B9B6";
 }
 
 
 // =====================================================
-// GET PERFECT FONT SIZE
+// GET ACTUAL BEST FONT SIZE
 // =====================================================
 
 function getBestFontSize(
@@ -128,66 +156,85 @@ function getBestFontSize(
     canvas.getContext("2d");
 
 
-  const fontFamily =
-    "EffectFont, Arial Black, Arial";
-
-
   /*
-    User custom font size দিলে
-    সেটাকে maximum হিসেবে ব্যবহার করবে।
-
-    কিন্তু text কাটার chance থাকলে
-    automatically ছোট হবে।
+    Maximum font size
   */
 
   let maxSize = 150;
 
+
+  /*
+    User custom size
+  */
+
   if (requestedFontSize) {
 
-    const requested =
+    const custom =
       Number(requestedFontSize);
 
     if (
-      Number.isFinite(requested) &&
-      requested >= 20 &&
-      requested <= 250
+      Number.isFinite(custom) &&
+      custom >= 15 &&
+      custom <= 250
     ) {
 
-      maxSize = requested;
+      maxSize = custom;
 
     }
 
   }
 
 
-  const availableWidth =
-    MAX_TEXT_WIDTH - SIDE_PADDING;
-
-
   /*
-    বড় থেকে ছোট font test করা
+    বড় থেকে ছোট font check করা হবে
   */
 
   for (
     let size = maxSize;
-    size >= 20;
+    size >= 15;
     size--
   ) {
 
     ctx.font =
-      `900 ${size}px ${fontFamily}`;
+      `900 ${size}px "${FONT_FAMILY}"`;
 
 
     const metrics =
       ctx.measureText(text);
 
 
-    const width =
+    /*
+      Actual text width
+    */
+
+    const textWidth =
       metrics.width;
 
 
+    /*
+      Actual text height
+    */
+
+    const textHeight =
+      (
+        metrics.actualBoundingBoxAscent ||
+        size
+      )
+      +
+      (
+        metrics.actualBoundingBoxDescent ||
+        0
+      );
+
+
+    /*
+      Safe area-এর মধ্যে থাকলে
+      এই size ব্যবহার করবো
+    */
+
     if (
-      width <= availableWidth
+      textWidth <= BANNER.maxWidth &&
+      textHeight <= BANNER.maxHeight
     ) {
 
       return size;
@@ -197,15 +244,15 @@ function getBestFontSize(
   }
 
 
-  return 20;
+  return 15;
 }
 
 
 // =====================================================
-// CREATE TEXT PNG
+// CREATE TEXT IMAGE
 // =====================================================
 
-function createTextImage(
+function createTextLayer(
   text,
   options = {}
 ) {
@@ -223,12 +270,58 @@ function createTextImage(
     );
 
 
+  /*
+    প্রথমে text measure
+  */
+
+  const measureCanvas =
+    createCanvas(10, 10);
+
+  const measureCtx =
+    measureCanvas.getContext("2d");
+
+
+  measureCtx.font =
+    `900 ${fontSize}px "${FONT_FAMILY}"`;
+
+
+  const metrics =
+    measureCtx.measureText(text);
+
+
+  const textWidth =
+    Math.ceil(metrics.width);
+
+
+  const textHeight =
+    Math.ceil(
+      (
+        metrics.actualBoundingBoxAscent ||
+        fontSize
+      )
+      +
+      (
+        metrics.actualBoundingBoxDescent ||
+        fontSize * 0.2
+      )
+    );
+
+
+  /*
+    Shadow-এর জন্য padding
+  */
+
+  const padding = 30;
+
+
   const canvasWidth =
-    MAX_TEXT_WIDTH + 100;
+    textWidth +
+    padding * 2;
 
 
   const canvasHeight =
-    300;
+    textHeight +
+    padding * 2;
 
 
   const canvas =
@@ -242,78 +335,13 @@ function createTextImage(
     canvas.getContext("2d");
 
 
-  const fontFamily =
-    "EffectFont, Arial Black, Arial";
-
-
   ctx.font =
-    `900 ${fontSize}px ${fontFamily}`;
+    `900 ${fontSize}px "${FONT_FAMILY}"`;
 
 
   ctx.textAlign = "center";
 
   ctx.textBaseline = "middle";
-
-
-  // =================================================
-  // SHADOW
-  // =================================================
-
-  ctx.shadowColor =
-    "rgba(0, 0, 0, 0.90)";
-
-  ctx.shadowBlur = 5;
-
-  ctx.shadowOffsetX = 7;
-
-  ctx.shadowOffsetY = 10;
-
-
-  // =================================================
-  // ORIGINAL-LIKE GRADIENT
-  // =================================================
-
-  const gradient =
-    ctx.createLinearGradient(
-      0,
-      50,
-      0,
-      230
-    );
-
-
-  gradient.addColorStop(
-    0,
-    color
-  );
-
-  gradient.addColorStop(
-    0.55,
-    "#2AAEAD"
-  );
-
-  gradient.addColorStop(
-    1,
-    "#087C7E"
-  );
-
-
-  ctx.fillStyle =
-    gradient;
-
-
-  // =================================================
-  // TEXT STROKE
-  // =================================================
-
-  ctx.strokeStyle =
-    "#07595B";
-
-  ctx.lineWidth =
-    Math.max(
-      1.5,
-      fontSize * 0.018
-    );
 
 
   const x =
@@ -324,12 +352,119 @@ function createTextImage(
     canvasHeight / 2;
 
 
+  // =================================================
+  // DARK EXTRUSION
+  // =================================================
+
+  /*
+    Original image-এর মতো
+    নিচে hard dark shadow
+  */
+
+  ctx.fillStyle =
+    "#07191A";
+
+  ctx.strokeStyle =
+    "#07191A";
+
+  ctx.lineWidth =
+    Math.max(
+      3,
+      fontSize * 0.035
+    );
+
+
+  /*
+    কয়েকবার নিচে আঁকা
+    যাতে 3D/extrusion feel আসে
+  */
+
+  for (
+    let i = 10;
+    i >= 3;
+    i--
+  ) {
+
+    ctx.strokeText(
+      text,
+      x + i * 0.7,
+      y + i
+    );
+
+    ctx.fillText(
+      text,
+      x + i * 0.7,
+      y + i
+    );
+
+  }
+
+
+  // =================================================
+  // MAIN TEXT GRADIENT
+  // =================================================
+
+  const gradient =
+    ctx.createLinearGradient(
+      0,
+      y - fontSize / 2,
+      0,
+      y + fontSize / 2
+    );
+
+
+  /*
+    Original-এর কাছাকাছি cyan style
+  */
+
+  gradient.addColorStop(
+    0,
+    "#53CFCA"
+  );
+
+  gradient.addColorStop(
+    0.35,
+    color
+  );
+
+  gradient.addColorStop(
+    0.75,
+    "#1A9A9A"
+  );
+
+  gradient.addColorStop(
+    1,
+    "#08777A"
+  );
+
+
+  // =================================================
+  // OUTLINE
+  // =================================================
+
+  ctx.strokeStyle =
+    "#07595B";
+
+  ctx.lineWidth =
+    Math.max(
+      1.5,
+      fontSize * 0.02
+    );
+
+
   ctx.strokeText(
     text,
     x,
     y
   );
 
+
+  // =================================================
+  // MAIN TEXT
+  // =================================================
+
+  ctx.fillStyle =
+    gradient;
 
   ctx.fillText(
     text,
@@ -339,8 +474,11 @@ function createTextImage(
 
 
   return {
+
     buffer:
-      canvas.toBuffer("image/png"),
+      canvas.toBuffer(
+        "image/png"
+      ),
 
     width:
       canvasWidth,
@@ -349,13 +487,76 @@ function createTextImage(
       canvasHeight,
 
     fontSize
+
   };
 
 }
 
 
 // =====================================================
-// API HOME
+// CREATE BANNER OVERLAY
+// =====================================================
+
+function createBannerCover(
+  actualWidth,
+  actualHeight
+) {
+
+  /*
+    Actual image size-এর জন্য
+    original coordinates scale করা হচ্ছে
+  */
+
+  const sx =
+    actualWidth /
+    DESIGN_WIDTH;
+
+
+  const sy =
+    actualHeight /
+    DESIGN_HEIGHT;
+
+
+  /*
+    শুধু original YOUR TEXT area cover
+  */
+
+  const points = [
+
+    [650, 315],
+    [1400, 560],
+    [1365, 775],
+    [620, 590]
+
+  ];
+
+
+  const scaled =
+    points.map(
+      ([x, y]) =>
+        `${x * sx},${y * sy}`
+    )
+    .join(" ");
+
+
+  return `
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="${actualWidth}"
+  height="${actualHeight}"
+>
+  <polygon
+    points="${scaled}"
+    fill="#111315"
+  />
+</svg>
+`;
+
+}
+
+
+// =====================================================
+// HOME
 // =====================================================
 
 app.get("/", async (req, res) => {
@@ -363,16 +564,19 @@ app.get("/", async (req, res) => {
   try {
 
     const metadata =
-      await sharp(TEMPLATE_PATH)
-        .metadata();
+      await sharp(
+        TEMPLATE_PATH
+      ).metadata();
 
 
     res.json({
 
       status: true,
 
-      name:
+      message:
         "Custom Text Effect API",
+
+      font: FONT_FAMILY,
 
       template: {
 
@@ -392,11 +596,14 @@ app.get("/", async (req, res) => {
         fullText:
           "/api?effectName=MAHABUB%20BOT",
 
-        customSize:
-          "/api?effectName=MAHABUB%20BOT&fontSize=70",
+        customFontSize:
+          "/api?effectName=MAHABUB%20BOT&fontSize=60",
 
         customColor:
-          "/api?effectName=MAHABUB&color=%23ff0000"
+          "/api?effectName=MAHABUB&color=%23ff0000",
+
+        png:
+          "/api?effectName=MAHABUB&format=png"
 
       }
 
@@ -437,9 +644,9 @@ app.get("/api", async (req, res) => {
     } = req.query;
 
 
-    // ===============================================
+    // =================================================
     // GET TEXT
-    // ===============================================
+    // =================================================
 
     const userText =
       String(
@@ -456,12 +663,19 @@ app.get("/api", async (req, res) => {
         status: false,
 
         error:
-          "effectName is required"
+          "effectName is required",
+
+        example:
+          "/api?effectName=MAHABUB%20BOT"
 
       });
 
     }
 
+
+    // =================================================
+    // MAX LENGTH
+    // =================================================
 
     if (
       [...userText].length > 60
@@ -479,47 +693,56 @@ app.get("/api", async (req, res) => {
     }
 
 
-    // ===============================================
-    // GET TEMPLATE METADATA
-    // ===============================================
+    // =================================================
+    // GET TEMPLATE SIZE
+    // =================================================
 
     const metadata =
-      await sharp(TEMPLATE_PATH)
-        .metadata();
+      await sharp(
+        TEMPLATE_PATH
+      ).metadata();
+
+
+    const imageWidth =
+      metadata.width;
+
+
+    const imageHeight =
+      metadata.height;
 
 
     if (
-      !metadata.width ||
-      !metadata.height
+      !imageWidth ||
+      !imageHeight
     ) {
 
       throw new Error(
-        "Template image size not found"
+        "Template image dimensions not found"
       );
 
     }
 
 
-    // ===============================================
-    // SCALE FOR DIFFERENT TEMPLATE SIZE
-    // ===============================================
+    // =================================================
+    // SCALE
+    // =================================================
 
     const scaleX =
-      metadata.width /
+      imageWidth /
       DESIGN_WIDTH;
 
 
     const scaleY =
-      metadata.height /
+      imageHeight /
       DESIGN_HEIGHT;
 
 
-    // ===============================================
-    // CREATE TEXT IMAGE
-    // ===============================================
+    // =================================================
+    // CREATE TEXT
+    // =================================================
 
-    const textData =
-      createTextImage(
+    const textLayer =
+      createTextLayer(
         userText,
         {
           fontSize,
@@ -528,31 +751,37 @@ app.get("/api", async (req, res) => {
       );
 
 
-    // ===============================================
-    // SCALE TEXT
-    // ===============================================
+    // =================================================
+    // SCALE TEXT LAYER
+    // =================================================
 
     const scaledTextWidth =
-      Math.round(
-        textData.width *
-        scaleX
+      Math.max(
+        1,
+        Math.round(
+          textLayer.width *
+          scaleX
+        )
       );
 
 
     const scaledTextHeight =
-      Math.round(
-        textData.height *
-        scaleY
+      Math.max(
+        1,
+        Math.round(
+          textLayer.height *
+          scaleY
+        )
       );
 
 
-    // ===============================================
+    // =================================================
     // ROTATE TEXT
-    // ===============================================
+    // =================================================
 
     const rotatedText =
       await sharp(
-        textData.buffer
+        textLayer.buffer
       )
 
         .resize(
@@ -561,7 +790,7 @@ app.get("/api", async (req, res) => {
         )
 
         .rotate(
-          TEXT_ANGLE,
+          BANNER.angle,
           {
             background: {
               r: 0,
@@ -577,49 +806,50 @@ app.get("/api", async (req, res) => {
         .toBuffer();
 
 
-    // ===============================================
-    // GET ROTATED TEXT SIZE
-    // ===============================================
-
-    const rotatedMetadata =
+    const rotatedMeta =
       await sharp(
         rotatedText
       ).metadata();
 
 
-    // ===============================================
-    // CENTER TEXT ON BANNER
-    // ===============================================
+    // =================================================
+    // CALCULATE CENTER POSITION
+    // =================================================
+
+    const centerX =
+      BANNER.centerX *
+      scaleX;
+
+
+    const centerY =
+      BANNER.centerY *
+      scaleY;
+
 
     let left =
       Math.round(
-        TEXT_CENTER_X *
-        scaleX -
-        rotatedMetadata.width / 2
+        centerX -
+        rotatedMeta.width / 2
       );
 
 
     let top =
       Math.round(
-        TEXT_CENTER_Y *
-        scaleY -
-        rotatedMetadata.height / 2
+        centerY -
+        rotatedMeta.height / 2
       );
 
 
-    /*
-      Clamp position
-
-      যাতে কোনো অবস্থাতেই
-      image-এর বাইরে না যায়
-    */
+    // =================================================
+    // SAFE IMAGE BOUNDARY
+    // =================================================
 
     left = Math.max(
       0,
       Math.min(
         left,
-        metadata.width -
-        rotatedMetadata.width
+        imageWidth -
+        rotatedMeta.width
       )
     );
 
@@ -628,20 +858,43 @@ app.get("/api", async (req, res) => {
       0,
       Math.min(
         top,
-        metadata.height -
-        rotatedMetadata.height
+        imageHeight -
+        rotatedMeta.height
       )
     );
 
 
-    // ===============================================
-    // CREATE FINAL IMAGE
-    // ===============================================
+    // =================================================
+    // COVER ORIGINAL TEXT
+    // =================================================
+
+    const bannerCover =
+      createBannerCover(
+        imageWidth,
+        imageHeight
+      );
+
+
+    // =================================================
+    // COMPOSITE
+    // =================================================
 
     let image =
-      sharp(TEMPLATE_PATH)
+      sharp(
+        TEMPLATE_PATH
+      )
 
         .composite([
+
+          {
+            input:
+              Buffer.from(
+                bannerCover
+              ),
+
+            top: 0,
+            left: 0
+          },
 
           {
             input:
@@ -655,13 +908,12 @@ app.get("/api", async (req, res) => {
         ]);
 
 
-    // ===============================================
-    // OPTIONAL RESIZE
-    // ===============================================
+    // =================================================
+    // OPTIONAL OUTPUT SIZE
+    // =================================================
 
     const outputWidth =
       Number(w);
-
 
     const outputHeight =
       Number(h);
@@ -669,35 +921,43 @@ app.get("/api", async (req, res) => {
 
     if (
       Number.isFinite(outputWidth) &&
-      outputWidth > 0
+      outputWidth >= 100 &&
+      outputWidth <= 4000
     ) {
 
       image =
-        image.resize(
-          Math.min(
-            outputWidth,
-            4000
-          ),
+        image.resize({
 
-          Number.isFinite(outputHeight) &&
-          outputHeight > 0
-            ? Math.min(
-                outputHeight,
-                4000
-              )
-            : undefined,
+          width:
+            Math.floor(
+              outputWidth
+            ),
 
-          {
-            fit: "cover"
-          }
-        );
+          height:
+
+            Number.isFinite(
+              outputHeight
+            ) &&
+            outputHeight >= 100 &&
+            outputHeight <= 4000
+
+              ? Math.floor(
+                  outputHeight
+                )
+
+              : undefined,
+
+          fit:
+            "cover"
+
+        });
 
     }
 
 
-    // ===============================================
-    // OUTPUT FORMAT
-    // ===============================================
+    // =================================================
+    // FORMAT
+    // =================================================
 
     const outputFormat =
       String(
@@ -723,9 +983,13 @@ app.get("/api", async (req, res) => {
           .toBuffer();
 
 
-      res.type("png");
+      res.type(
+        "image/png"
+      );
 
-      return res.send(buffer);
+      return res.send(
+        buffer
+      );
 
     }
 
@@ -744,9 +1008,13 @@ app.get("/api", async (req, res) => {
           .toBuffer();
 
 
-      res.type("webp");
+      res.type(
+        "image/webp"
+      );
 
-      return res.send(buffer);
+      return res.send(
+        buffer
+      );
 
     }
 
@@ -756,20 +1024,26 @@ app.get("/api", async (req, res) => {
     const buffer =
       await image
         .jpeg({
-          quality: 95
+          quality: 95,
+          mozjpeg: true
         })
         .toBuffer();
 
 
-    res.type("jpeg");
+    res.type(
+      "image/jpeg"
+    );
 
-    return res.send(buffer);
+
+    return res.send(
+      buffer
+    );
 
 
   } catch (error) {
 
     console.error(
-      "IMAGE ERROR:",
+      "API ERROR:",
       error
     );
 
@@ -795,10 +1069,13 @@ app.get("/api", async (req, res) => {
 // START SERVER
 // =====================================================
 
-app.listen(PORT, () => {
+app.listen(
+  PORT,
+  () => {
 
-  console.log(
-    `Server running on port ${PORT}`
-  );
+    console.log(
+      `Server running on port ${PORT}`
+    );
 
-});
+  }
+);

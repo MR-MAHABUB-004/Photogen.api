@@ -25,7 +25,7 @@ const FONT_PATH = path.join(
   __dirname,
   "..",
   "assets",
-  "fonts",
+  "font",
   "love.ttf"
 );
 
